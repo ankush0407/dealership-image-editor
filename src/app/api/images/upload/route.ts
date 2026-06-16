@@ -85,8 +85,8 @@ export async function POST(req: NextRequest) {
 async function applyLogo(imageBuffer: Buffer, logoBuffer: Buffer): Promise<Buffer> {
   const meta = await sharp(imageBuffer).metadata();
   const imageWidth = meta.width ?? 1200;
+  const format = meta.format;
 
-  // Logo occupies ~15% of image width, placed 2% from the top-left corner
   const logoWidth = Math.round(imageWidth * 0.15);
   const padding = Math.round(imageWidth * 0.02);
 
@@ -94,10 +94,15 @@ async function applyLogo(imageBuffer: Buffer, logoBuffer: Buffer): Promise<Buffe
     .resize(logoWidth, undefined, { fit: 'inside' })
     .toBuffer();
 
-  return sharp(imageBuffer)
-    .composite([{ input: resizedLogo, top: padding, left: padding }])
-    .jpeg({ quality: 92 })
-    .toBuffer();
+  const composited = sharp(imageBuffer)
+    .composite([{ input: resizedLogo, top: padding, left: padding }]);
+
+  if (format === 'png') {
+    return composited.png({ compressionLevel: 6 }).toBuffer();
+  }
+
+  // Maximum JPEG quality with 4:4:4 chroma subsampling to avoid colour compression
+  return composited.jpeg({ quality: 100, chromaSubsampling: '4:4:4' }).toBuffer();
 }
 
 async function processImageAsync(
