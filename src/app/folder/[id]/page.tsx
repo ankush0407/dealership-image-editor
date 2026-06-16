@@ -97,13 +97,21 @@ export default function FolderDetailPage() {
         const file = files[i];
         if (!['image/jpeg', 'image/png'].includes(file.type)) continue;
 
-        // Step 1: get a Supabase signed upload URL (tiny JSON request — no file sent to Vercel)
-        const urlRes = await axios.post(
-          '/api/images/upload-url',
-          { vin_folder_id: folderId, filename: file.name, content_type: file.type },
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
-        const { signedUrl, imageId } = urlRes.data;
+        // Step 1: get a Supabase signed upload URL (tiny JSON — no file sent to Vercel)
+        let signedUrl: string;
+        let imageId: number;
+        try {
+          const urlRes = await axios.post(
+            '/api/images/upload-url',
+            { vin_folder_id: folderId, filename: file.name, content_type: file.type },
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+          signedUrl = urlRes.data.signedUrl;
+          imageId = urlRes.data.imageId;
+        } catch (err: any) {
+          const msg = err.response?.data?.error;
+          throw new Error(`Step 1 (get upload URL): ${typeof msg === 'string' ? msg : err.message}`);
+        }
 
         // Step 2: PUT the file directly to Supabase (bypasses Vercel — no size limit)
         const uploadRes = await fetch(signedUrl, {
@@ -111,20 +119,28 @@ export default function FolderDetailPage() {
           headers: { 'Content-Type': file.type },
           body: file,
         });
-        if (!uploadRes.ok) throw new Error(`Direct upload failed: ${uploadRes.status}`);
+        if (!uploadRes.ok) {
+          const body = await uploadRes.text().catch(() => '');
+          throw new Error(`Step 2 (Supabase upload) HTTP ${uploadRes.status}: ${body}`);
+        }
 
         // Step 3: tell our API to kick off Gemini processing
-        await axios.post(
-          '/api/images/process',
-          { image_id: imageId },
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
+        try {
+          await axios.post(
+            '/api/images/process',
+            { image_id: imageId },
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+        } catch (err: any) {
+          const msg = err.response?.data?.error;
+          throw new Error(`Step 3 (start processing): ${typeof msg === 'string' ? msg : err.message}`);
+        }
       }
 
       e.currentTarget.value = '';
       await loadImages();
     } catch (err: any) {
-      const msg = err.response?.data?.error;
+      const msg = err.response?.data?.error ?? err.message;
       setError(typeof msg === 'string' ? msg : 'Upload failed');
     } finally {
       setUploading(false);

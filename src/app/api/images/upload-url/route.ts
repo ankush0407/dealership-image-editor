@@ -13,7 +13,8 @@ export async function POST(req: NextRequest) {
     const payload = verifyToken(token);
     if (!payload) return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
 
-    const { vin_folder_id, filename, content_type } = await req.json();
+    const body = await req.json();
+    const { vin_folder_id, filename, content_type } = body;
 
     if (!vin_folder_id || !filename || !content_type) {
       return NextResponse.json({ error: 'Missing vin_folder_id, filename, or content_type' }, { status: 400 });
@@ -38,9 +39,16 @@ export async function POST(req: NextRequest) {
     }
 
     const rawKey = storageKey(payload.userId, vin_name, 'raw', filename);
-    const signedUrl = await getStorage().getSignedUploadUrl(rawKey);
 
-    // Create the DB record and deduct credit now — processing is triggered separately
+    // Surface the real Supabase error so it shows in the UI
+    let signedUrl: string;
+    try {
+      signedUrl = await getStorage().getSignedUploadUrl(rawKey);
+    } catch (storageErr: any) {
+      console.error('getSignedUploadUrl failed:', storageErr);
+      return NextResponse.json({ error: `Storage: ${storageErr.message}` }, { status: 500 });
+    }
+
     const imageResult = await query(
       'INSERT INTO images (vin_folder_id, user_id, original_filename, raw_path, status) VALUES ($1, $2, $3, $4, $5) RETURNING id',
       [vin_folder_id, payload.userId, filename, rawKey, 'queued']
@@ -54,8 +62,8 @@ export async function POST(req: NextRequest) {
     );
 
     return NextResponse.json({ success: true, imageId, signedUrl, storageKey: rawKey });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Upload URL error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
   }
 }
