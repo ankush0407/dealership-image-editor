@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
 
     // Get image counts for each folder
     const foldersWithCounts = await Promise.all(
-      folders.map(async (folder) => {
+      folders.map(async (folder: { id: number; vin_name: string; created_at: string }) => {
         const countResult = await query(
           'SELECT COUNT(*) as total, COUNT(CASE WHEN status = $1 THEN 1 END) as processed FROM images WHERE vin_folder_id = $2',
           ['done', folder.id]

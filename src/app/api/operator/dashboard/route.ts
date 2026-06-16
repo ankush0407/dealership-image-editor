@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
-import { verifyToken, getTokenFromRequest } from '@/lib/auth';
 
 const OPERATOR_SECRET = process.env.OPERATOR_SECRET || '';
 
@@ -41,7 +40,7 @@ export async function GET(req: NextRequest) {
       GROUP BY ct.user_id
     `);
 
-    const creditMap = new Map(
+    const creditMap = new Map<number, { credits_used: number; transaction_count: number }>(
       creditResult.rows.map((row: any) => [row.user_id, row])
     );
 
