@@ -84,7 +84,9 @@ export default function FolderDetailPage() {
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.currentTarget.files;
+    // Grab input reference immediately — React nullifies currentTarget after the handler yields
+    const input = e.currentTarget;
+    const files = input.files;
     if (!files || files.length === 0) return;
 
     setError('');
@@ -137,7 +139,7 @@ export default function FolderDetailPage() {
         }
       }
 
-      e.currentTarget.value = '';
+      input.value = '';
       await loadImages();
     } catch (err: any) {
       const msg = err.response?.data?.error ?? err.message;
