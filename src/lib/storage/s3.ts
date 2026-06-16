@@ -16,4 +16,8 @@ export class S3Storage implements StorageProvider {
   async delete(_key: string): Promise<void> {
     throw new Error('S3 storage not yet configured.');
   }
+
+  async getSignedUrl(_key: string, _expiresIn: number): Promise<string> {
+    throw new Error('S3 storage not yet configured.');
+  }
 }

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import sharp from 'sharp';
 import { query } from '@/lib/db';
 import { verifyToken, getTokenFromRequest } from '@/lib/auth';
 import { processImageWithGemini } from '@/lib/gemini';
@@ -81,6 +82,24 @@ export async function POST(req: NextRequest) {
   }
 }
 
+async function applyLogo(imageBuffer: Buffer, logoBuffer: Buffer): Promise<Buffer> {
+  const meta = await sharp(imageBuffer).metadata();
+  const imageWidth = meta.width ?? 1200;
+
+  // Logo occupies ~15% of image width, placed 2% from the top-left corner
+  const logoWidth = Math.round(imageWidth * 0.15);
+  const padding = Math.round(imageWidth * 0.02);
+
+  const resizedLogo = await sharp(logoBuffer)
+    .resize(logoWidth, undefined, { fit: 'inside' })
+    .toBuffer();
+
+  return sharp(imageBuffer)
+    .composite([{ input: resizedLogo, top: padding, left: padding }])
+    .jpeg({ quality: 92 })
+    .toBuffer();
+}
+
 async function processImageAsync(
   imageId: number,
   userId: number,
@@ -98,7 +117,19 @@ async function processImageAsync(
 
       const storage = getStorage();
       const rawBuffer = await storage.download(rawKey);
-      const editedBuffer = await processImageWithGemini(rawBuffer, mimeType);
+      let editedBuffer = await processImageWithGemini(rawBuffer, mimeType);
+
+      // Composite the user's logo onto the top-left corner if one is set
+      const logoResult = await query('SELECT logo_path FROM users WHERE id = $1', [userId]);
+      const logoPath = logoResult.rows[0]?.logo_path;
+      if (logoPath) {
+        try {
+          const logoBuffer = await storage.download(logoPath);
+          editedBuffer = await applyLogo(editedBuffer, logoBuffer);
+        } catch (logoError) {
+          console.warn('Logo compositing failed, saving without logo:', logoError);
+        }
+      }
 
       const editedKey = storageKey(userId, vinName, 'edited', `edited_${filename}`);
       await storage.upload(editedKey, editedBuffer, mimeType);

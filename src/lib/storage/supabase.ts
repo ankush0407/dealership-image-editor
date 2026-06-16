@@ -34,4 +34,12 @@ export class SupabaseStorage implements StorageProvider {
       .remove([key]);
     if (error) throw new Error(`Supabase delete failed: ${error.message}`);
   }
+
+  async getSignedUrl(key: string, expiresIn: number): Promise<string> {
+    const { data, error } = await this.client.storage
+      .from(BUCKET)
+      .createSignedUrl(key, expiresIn);
+    if (error) throw new Error(`Supabase signed URL failed: ${error.message}`);
+    return data.signedUrl;
+  }
 }

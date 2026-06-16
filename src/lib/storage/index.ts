@@ -2,6 +2,7 @@ export interface StorageProvider {
   upload(key: string, buffer: Buffer, mimeType: string): Promise<void>;
   download(key: string): Promise<Buffer>;
   delete(key: string): Promise<void>;
+  getSignedUrl(key: string, expiresIn: number): Promise<string>;
 }
 
 export function getStorage(): StorageProvider {
@@ -18,4 +19,8 @@ export function getStorage(): StorageProvider {
 
 export function storageKey(userId: number, vinName: string, type: 'raw' | 'edited', filename: string): string {
   return `${userId}/${vinName}/${type}/${filename}`;
+}
+
+export function logoKey(userId: number, filename: string): string {
+  return `${userId}/logo/${filename}`;
 }
