@@ -38,6 +38,8 @@ export default function DashboardPage() {
   const [logoUploading, setLogoUploading] = useState(false);
   const [logoError, setLogoError] = useState('');
   const [showLogoPanel, setShowLogoPanel] = useState(false);
+  const [applyingLogo, setApplyingLogo] = useState(false);
+  const [applyMessage, setApplyMessage] = useState('');
   const logoInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -130,6 +132,23 @@ export default function DashboardPage() {
       setLogoError(err.response?.data?.error || 'Upload failed');
     } finally {
       setLogoUploading(false);
+    }
+  };
+
+  const handleApplyToExisting = async () => {
+    setApplyMessage('');
+    setApplyingLogo(true);
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+      const response = await axios.post('/api/user/logo/apply-existing', {}, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setApplyMessage(response.data.message);
+    } catch (err: any) {
+      setApplyMessage(err.response?.data?.error || 'Failed to apply logo');
+    } finally {
+      setApplyingLogo(false);
     }
   };
 
@@ -267,6 +286,16 @@ export default function DashboardPage() {
                   <img src={logo.url} alt="Current logo" className="max-h-36 max-w-full object-contain" />
                 </div>
                 <p className="text-xs text-gray-400 text-center mb-3">Current logo</p>
+                <button
+                  onClick={handleApplyToExisting}
+                  disabled={applyingLogo}
+                  className="w-full bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white py-2 rounded-lg text-sm font-semibold transition mb-2"
+                >
+                  {applyingLogo ? 'Applying…' : 'Apply logo to existing edited images'}
+                </button>
+                {applyMessage && (
+                  <p className="text-sm text-gray-600 mb-2">{applyMessage}</p>
+                )}
                 <button
                   onClick={handleLogoDelete}
                   className="w-full border border-red-300 text-red-600 hover:bg-red-50 py-2 rounded-lg text-sm font-semibold transition"
