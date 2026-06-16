@@ -3,6 +3,7 @@ export interface StorageProvider {
   download(key: string): Promise<Buffer>;
   delete(key: string): Promise<void>;
   getSignedUrl(key: string, expiresIn: number): Promise<string>;
+  getSignedUploadUrl(key: string): Promise<string>;
 }
 
 export function getStorage(): StorageProvider {

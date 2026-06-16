@@ -42,4 +42,12 @@ export class SupabaseStorage implements StorageProvider {
     if (error) throw new Error(`Supabase signed URL failed: ${error.message}`);
     return data.signedUrl;
   }
+
+  async getSignedUploadUrl(key: string): Promise<string> {
+    const { data, error } = await this.client.storage
+      .from(BUCKET)
+      .createSignedUploadUrl(key);
+    if (error) throw new Error(`Supabase signed upload URL failed: ${error.message}`);
+    return data.signedUrl;
+  }
 }

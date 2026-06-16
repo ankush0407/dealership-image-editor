@@ -1,7 +1,7 @@
 import type { StorageProvider } from './index';
 
 // Future S3 implementation. To activate:
-// 1. npm install @aws-sdk/client-s3
+// 1. npm install @aws-sdk/client-s3 @aws-sdk/s3-request-presigner
 // 2. Set STORAGE_PROVIDER=s3 in .env
 // 3. Set AWS_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, S3_BUCKET
 export class S3Storage implements StorageProvider {
@@ -18,6 +18,10 @@ export class S3Storage implements StorageProvider {
   }
 
   async getSignedUrl(_key: string, _expiresIn: number): Promise<string> {
+    throw new Error('S3 storage not yet configured.');
+  }
+
+  async getSignedUploadUrl(_key: string): Promise<string> {
     throw new Error('S3 storage not yet configured.');
   }
 }

@@ -93,19 +93,36 @@ export default function FolderDetailPage() {
       const token = localStorage.getItem('token');
       if (!token) { router.push('/login'); return; }
 
-      const formData = new FormData();
-      formData.append('vin_folder_id', folderId);
       for (let i = 0; i < files.length; i++) {
-        formData.append('files', files[i]);
+        const file = files[i];
+        if (!['image/jpeg', 'image/png'].includes(file.type)) continue;
+
+        // Step 1: get a Supabase signed upload URL (tiny JSON request — no file sent to Vercel)
+        const urlRes = await axios.post(
+          '/api/images/upload-url',
+          { vin_folder_id: folderId, filename: file.name, content_type: file.type },
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        const { signedUrl, imageId } = urlRes.data;
+
+        // Step 2: PUT the file directly to Supabase (bypasses Vercel — no size limit)
+        const uploadRes = await fetch(signedUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': file.type },
+          body: file,
+        });
+        if (!uploadRes.ok) throw new Error(`Direct upload failed: ${uploadRes.status}`);
+
+        // Step 3: tell our API to kick off Gemini processing
+        await axios.post(
+          '/api/images/process',
+          { image_id: imageId },
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
       }
 
-      const response = await axios.post('/api/images/upload', formData, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (response.data.success) {
-        e.currentTarget.value = '';
-        await loadImages();
-      }
+      e.currentTarget.value = '';
+      await loadImages();
     } catch (err: any) {
       const msg = err.response?.data?.error;
       setError(typeof msg === 'string' ? msg : 'Upload failed');
