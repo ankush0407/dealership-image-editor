@@ -109,7 +109,8 @@ export default function DashboardPage() {
   };
 
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.currentTarget.files?.[0];
+    const input = e.currentTarget;
+    const file = input.files?.[0];
     if (!file) return;
 
     setLogoError('');
@@ -126,7 +127,7 @@ export default function DashboardPage() {
       });
       if (response.data.success) {
         setLogo(response.data.logo);
-        e.currentTarget.value = '';
+        input.value = '';
       }
     } catch (err: any) {
       setLogoError(err.response?.data?.error || 'Upload failed');

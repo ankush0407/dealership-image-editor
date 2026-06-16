@@ -1,9 +1,12 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import sharp from 'sharp';
 import { query } from '@/lib/db';
 import { verifyToken, getTokenFromRequest } from '@/lib/auth';
 import { getStorage, storageKey } from '@/lib/storage';
 import { processImageWithGemini } from '@/lib/gemini';
+
+// Allow up to 5 minutes — Gemini image generation can take 30-90 seconds per image.
+export const maxDuration = 300;
 
 async function applyLogo(imageBuffer: Buffer, logoBuffer: Buffer): Promise<Buffer> {
   const meta = await sharp(imageBuffer).metadata();
@@ -46,10 +49,11 @@ export async function POST(req: NextRequest) {
     const image = result.rows[0];
     if (image.user_id !== payload.userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
 
-    // Fire and forget — respond immediately so Vercel doesn't time out the request
-    processAsync(image, payload.userId).catch((err) =>
+    // after() tells Vercel to keep the function alive until processAsync completes,
+    // even though the HTTP response is returned immediately.
+    after(() => processAsync(image, payload.userId).catch((err) =>
       console.error('Background process error:', err)
-    );
+    ));
 
     return NextResponse.json({ success: true });
   } catch (error) {
@@ -104,7 +108,6 @@ async function processAsync(
           "UPDATE images SET status = 'failed', error_message = $1, retry_count = $2 WHERE id = $3",
           [(error as any).message, retries, image.id]
         );
-        // Refund the credit
         await query('UPDATE users SET credits_remaining = credits_remaining + 1 WHERE id = $1', [userId]);
         await query(
           'INSERT INTO credit_transactions (user_id, delta, reason, image_id) VALUES ($1, $2, $3, $4)',
