@@ -107,7 +107,8 @@ export default function FolderDetailPage() {
         await loadImages();
       }
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Upload failed');
+      const msg = err.response?.data?.error;
+      setError(typeof msg === 'string' ? msg : 'Upload failed');
     } finally {
       setUploading(false);
     }
