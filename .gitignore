@@ -5,7 +5,7 @@ node_modules/
 .DS_Store
 .env.local
 .env.*.local
-storage/
+/storage/
 dist/
 build/
 .idea/

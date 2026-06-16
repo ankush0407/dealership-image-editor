@@ -25,7 +25,10 @@ function ImagePreview({ imageId, type }: { imageId: number; type: 'raw' | 'edite
     fetch(`/api/images/${imageId}/download?inline=true&type=${type}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
-      .then((res) => res.blob())
+      .then((res) => {
+        if (!res.ok) throw new Error(`${res.status}`);
+        return res.blob();
+      })
       .then((blob) => {
         objectUrl = URL.createObjectURL(blob);
         setSrc(objectUrl);
@@ -92,7 +95,7 @@ export default function FolderDetailPage() {
       }
 
       const response = await axios.post('/api/images/upload', formData, {
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'multipart/form-data' },
+        headers: { Authorization: `Bearer ${token}` },
       });
 
       if (response.data.success) {
