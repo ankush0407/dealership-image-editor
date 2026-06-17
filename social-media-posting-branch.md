@@ -1,14 +1,14 @@
 # Social Media Posting — Feature Planning
 
 Branch: `feature/social-media-posting`  
-Status: Pre-development planning  
+Status: Pre-development planning — all decisions resolved ✓  
 Last updated: 2026-06-17
 
 ---
 
 ## Feature Overview
 
-Allow dealership users to select a Hero image from a VIN Edited folder and publish it as a single post to their Facebook Page or Facebook Group — with bike details auto-populated from VIN decode, a user-supplied price and condition, and a website listing URL posted as the first comment. Instagram support follows in a later phase.
+Allow dealership users to select a Hero image from a VIN Edited folder and publish it as a single post to their Facebook Page — with bike details auto-populated from VIN decode, a user-supplied price and condition, and an auto-constructed VIN listing URL posted as the first comment. Facebook Groups and Instagram follow in later phases.
 
 This feature is offered as a **paid add-on** to the core image editing subscription, but is also designed as a **standalone offering** — users can upload edited images directly to a VIN Edited folder and post to social media without needing to go through the Gemini background-removal pipeline.
 
@@ -101,9 +101,9 @@ Social media posting is a **paid add-on** — users without it see a locked/upgr
 
 | Platform | Phase | Notes |
 |---|---|---|
-| Facebook Pages | Phase 1 | Primary target |
-| Facebook Groups | Phase 1 | Same Zernio API call, different account type |
+| Facebook Pages | Phase 1 | Primary target — build now |
 | Instagram | Phase 2 | After FB is stable; requires Business Account linked to FB Page |
+| Facebook Groups | Phase 3 | After Instagram; may need different Zernio permissions |
 | Twitter/LinkedIn/etc. | Not planned | Zernio supports them but out of scope |
 
 ---
@@ -112,8 +112,8 @@ Social media posting is a **paid add-on** — users without it see a locked/upgr
 
 **Single Hero image** — no carousel.
 
-- One image posted to the Facebook Page/Group feed
-- Website listing URL posted as the **first comment** (not in the caption — keeps caption clean and avoids link penalties in FB algorithm)
+- One image posted to the Facebook Page feed
+- Auto-constructed VIN listing URL posted as the **first comment** (not in the caption — keeps caption clean and avoids link penalties in FB algorithm)
 - Caption auto-filled from VIN data + listing details, fully editable before posting
 
 ### Caption template (per user, editable)
@@ -132,6 +132,18 @@ Engine: {engine} | {fuel_type}
 
 Users can save their own default template. Placeholders that NHTSA cannot fill (price, condition, description) come from the listing details form.
 
+### Listing URL (first comment)
+
+Every dealership has a website where inventory is searchable by VIN. The listing URL is auto-constructed — no manual entry per vehicle required.
+
+Each user saves one setting:  
+`vin_search_url_template` — e.g. `https://acemotors.com/inventory?vin={VIN}`
+
+At post time: `{VIN}` is replaced with the folder's VIN name:  
+→ `https://acemotors.com/inventory?vin=JKBZXVT15RA000075`
+
+This URL is posted as the first comment automatically. The Post Builder shows it as a read-only preview so the user can confirm it looks right before posting.
+
 ---
 
 ## Image Aspect Ratio Handling
@@ -140,30 +152,47 @@ Images must be resized/cropped before posting to match platform requirements. Th
 
 | Platform | Optimal ratio | Target resolution | Notes |
 |---|---|---|---|
-| Facebook feed | 1:1 or 1.91:1 | 1200×1200 or 1200×628 | Both work; square gets more feed real estate |
-| Facebook Groups | 1:1 or 1.91:1 | Same as above | |
+| Facebook Pages | 1:1 or 1.91:1 | 1200×1200 or 1200×628 | Square gets more feed real estate |
+| Facebook Groups (Phase 3) | 1:1 or 1.91:1 | Same as above | |
 | Instagram (Phase 2) | 4:5 portrait | 1080×1350 | Best engagement on mobile |
 
-**Implementation:** Use `sharp` to resize/pad to target dimensions before passing the URL to Zernio. Store the resized version temporarily (or generate a Supabase signed URL of the resized buffer uploaded to a `social/` subfolder).
+**Implementation:**
+1. Download the Hero image from Supabase
+2. Use `sharp` to resize/pad to the target platform dimensions
+3. Upload the resized buffer to Supabase at `{userId}/{vinName}/social/{imageId}-resized.jpg`
+4. Generate a signed URL (15 minutes — enough for Zernio to fetch it)
+5. Pass the signed URL to Zernio API
+6. **On Zernio delivery webhook → delete the resized image from Supabase** (`social/` subfolder only — original edited image is never touched)
+7. On failure → retry reuses step 1–6 (resized image already deleted; regenerate it)
 
 ---
 
 ## Automation Level
 
 ### Phase 1: Semi-auto (build now)
-When Gemini finishes processing an image → automatically create a **draft post** in the `social_posts` table with status `draft`. User sees a "Review & Post" notification in the folder view, reviews the pre-filled caption and scheduled time, then approves.
+
+**Draft is created only when listing details are complete** — price, condition, and VIN details (make, model, year) must all be filled in before a draft is generated. Without them the caption cannot be auto-populated.
+
+Two triggers for draft creation:
+1. Gemini finishes processing → check if listing details are complete → if yes, create draft; if no, wait
+2. User saves listing details → check if any processed images have no draft yet → create drafts for them retroactively
 
 Flow:
 ```
-Gemini done → create social_posts row (status: draft) → user notified
-        ↓
-User opens "Review & Post" → edits caption/time if needed → clicks Approve
-        ↓
-Our API calls Zernio → status updated to scheduled/posted
+Gemini done
+  → listing details complete? ──No──→ no draft (user prompted to fill details)
+  ↓ Yes
+Create social_posts row (status: draft, caption auto-filled)
+  → user sees "Review & Post" badge on folder
+  ↓
+User opens Post Builder → confirms/edits caption, selects Hero image, sets schedule
+  → clicks Schedule / Post Now
+  ↓
+API resizes image → calls Zernio → status: scheduled or posted
 ```
 
 ### Phase 2: Fully auto (later)
-Add a per-folder toggle: "Auto-post when editing completes." When enabled, approved draft → scheduled post fires without user review step. User can still cancel before the scheduled time.
+Add a per-user toggle: "Auto-post when editing completes (listing details must be saved first)." When enabled, the Review step is skipped — the draft is approved automatically and Zernio is called immediately. User can still cancel a scheduled post before delivery time.
 
 ---
 
@@ -215,20 +244,24 @@ Each VIN folder shows a post history section below the image grid. For every pos
 ALTER TABLE users ADD COLUMN social_media_addon BOOLEAN DEFAULT false;
 
 -- Zernio connection (per user)
-ALTER TABLE users ADD COLUMN zernio_fb_account_id VARCHAR(200);   -- Zernio's ID for the FB Page
-ALTER TABLE users ADD COLUMN zernio_ig_account_id VARCHAR(200);   -- Phase 2
-ALTER TABLE users ADD COLUMN fb_page_name VARCHAR(200);           -- display only
-ALTER TABLE users ADD COLUMN website_listing_url TEXT;            -- appended as first comment
+ALTER TABLE users ADD COLUMN zernio_fb_account_id VARCHAR(200);       -- Zernio's ID for the FB Page
+ALTER TABLE users ADD COLUMN zernio_ig_account_id VARCHAR(200);       -- Phase 2
+ALTER TABLE users ADD COLUMN fb_page_name VARCHAR(200);               -- display only
+
+-- Dealer website VIN search URL template (per user)
+-- Example: 'https://acemotors.com/inventory?vin={VIN}'
+-- At post time {VIN} is replaced with the folder's vin_name
+ALTER TABLE users ADD COLUMN vin_search_url_template TEXT;
 
 -- Caption template (per user)
 ALTER TABLE users ADD COLUMN caption_template TEXT;
 
 -- Listing details (per VIN folder)
+-- All fields required before a draft social post can be created
 ALTER TABLE vin_folders ADD COLUMN price NUMERIC(10,2);
-ALTER TABLE vin_folders ADD COLUMN condition VARCHAR(50);          -- 'new' | 'used' | 'certified'
+ALTER TABLE vin_folders ADD COLUMN condition VARCHAR(50);              -- 'new' | 'used' | 'certified'
 ALTER TABLE vin_folders ADD COLUMN description TEXT;
-ALTER TABLE vin_folders ADD COLUMN vin_details JSONB;             -- merged NHTSA + manual overrides
-ALTER TABLE vin_folders ADD COLUMN website_listing_url TEXT;      -- per-listing URL override
+ALTER TABLE vin_folders ADD COLUMN vin_details JSONB;                 -- merged NHTSA + manual overrides
 
 -- Post tracking
 CREATE TABLE social_posts (
@@ -272,16 +305,17 @@ All `/api/social/*` routes return 403 if `social_media_addon = false`.
 
 ## UI Changes Summary
 
-### Dashboard
-- Social add-on status card (Connect Facebook / Connected to "{Page Name}")
-- "Manage" link opens settings panel: caption template editor, website URL, disconnect button
+### Dashboard — Social Settings panel
+- Connect Facebook / Connected to "{Page Name}" status + disconnect button
+- **VIN Search URL template** field — e.g. `https://acemotors.com/inventory?vin={VIN}` (used as first comment on every post; `{VIN}` auto-replaced at post time)
+- **Caption template** editor with placeholder reference: `{year}`, `{make}`, `{model}`, `{price}`, `{condition}`, `{engine}`, `{description}`
 
-### VIN Folder — Listing Details panel (new)
-- Price (numeric, required for caption)
+### VIN Folder — Listing Details panel (new, required before posting)
+- Price (numeric)
 - Condition dropdown: New / Used / Certified Pre-Owned
-- Listing URL (overrides user-level default)
 - Description (free text)
-- VIN decoded fields (auto-filled, all editable as fallback)
+- VIN decoded fields (auto-filled from NHTSA, all editable as fallback)
+- Status indicator: "Listing complete ✓" or "Fill in details to enable posting"
 
 ### VIN Edited Folder — direct upload (standalone path)
 - Upload button accepting JPEG/PNG (no Gemini processing)
@@ -310,14 +344,14 @@ Triggered by "Review & Post" badge on draft posts or "Create Post" button:
 │  │ #motorcycle #kawasaki #dealership           │   │
 │  └─────────────────────────────────────────────┘   │
 ├─────────────────────────────────────────────────────┤
-│  FIRST COMMENT (listing URL)                        │
-│  https://dealership.com/listing/zx6r-2022          │
+│  FIRST COMMENT (auto-constructed — read only)       │
+│  acemotors.com/inventory?vin=JKBZXVT15RA000075     │
+│  ⚙ Change template in Settings                     │
 ├─────────────────────────────────────────────────────┤
 │  SCHEDULE                                           │
 │  ○ Post now   ● Schedule: [Jun 18, 2026] [9:00 AM] │
 ├─────────────────────────────────────────────────────┤
-│  POST TO:  [✓ Facebook Page]  [ Facebook Group ]   │
-│  [Cancel]                            [Schedule →]   │
+│  [Cancel]                        [Schedule Post →]  │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -357,11 +391,13 @@ Triggered by "Review & Post" badge on draft posts or "Create Post" button:
 | Middleware | Zernio (API-first, free 2 accounts, built-in scheduling) |
 | Meta App Review | Deferred — Zernio handles it until 40–50 users |
 | Post format | Single Hero image + listing URL as first comment (no carousel) |
-| Platforms | Facebook Pages + Groups first; Instagram Phase 2 |
-| Automation | Semi-auto now (draft on edit complete → user approves); fully auto later |
-| Image ratios | Resize server-side with sharp before Zernio API call |
+| Platforms | Facebook Pages Phase 1; Instagram Phase 2; Facebook Groups Phase 3 |
+| Automation | Semi-auto now (draft only when listing details complete); fully auto later |
+| Fully-auto trigger | Listing details (price, condition, VIN fields) must be saved before draft is created |
+| Image ratios | Resize server-side with sharp; delete resized copy from Supabase after Zernio confirms delivery |
 | Scheduling | Built into Post Builder via Zernio's native scheduled_at field |
-| VIN decode | NHTSA primary; listing form as editable fallback |
+| VIN decode | NHTSA primary; listing form as editable fallback for missing fields |
+| Listing URL | Auto-constructed from per-user `vin_search_url_template` + VIN name; no per-listing entry needed |
 | Post history | Shown per VIN folder below image grid |
 | Caption | Auto-filled template, editable per post, saveable per user |
 | Standalone | Direct upload to VIN Edited folder (no Gemini required) |
@@ -385,11 +421,9 @@ Factor Zernio cost into the social media add-on price charged to users.
 
 | Question | Notes |
 |---|---|
-| Fully auto trigger: when to fire? | On edit complete? Or only when listing details are filled in? Need both to generate a valid caption. |
-| Facebook Groups vs Pages: different Zernio flow? | Check Zernio docs — Groups may require additional permissions |
-| What URL to use for "View listing"? | User-level default or per-VIN override? Both are in schema. Confirm UI behaviour. |
-| How long to keep resized images in Supabase? | Delete after successful post, or keep indefinitely in `social/` folder? |
-| Webhook security from Zernio? | Verify Zernio signs webhook payloads — validate signature in handler |
+| Webhook security from Zernio? | Verify Zernio signs webhook payloads — validate signature in the webhook handler before updating social_posts status |
+
+All other questions from earlier planning sessions are resolved — see Decisions Made table above.
 
 ---
 
