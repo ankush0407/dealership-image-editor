@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import axios from 'axios';
+import JSZip from 'jszip';
 
 interface Image {
   id: number;
@@ -58,8 +59,10 @@ export default function FolderDetailPage() {
   const [images, setImages] = useState<Image[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
   const [error, setError] = useState('');
   const [view, setView] = useState<View>('folders');
+  const [downloadingAll, setDownloadingAll] = useState(false);
 
   useEffect(() => {
     loadImages();
@@ -89,12 +92,17 @@ export default function FolderDetailPage() {
     const files = input.files;
     if (!files || files.length === 0) return;
 
+    const total = Array.from(files).filter(f => ['image/jpeg', 'image/png'].includes(f.type)).length;
+    if (total === 0) return;
+
     setError('');
     setUploading(true);
+    setUploadProgress({ current: 0, total });
     try {
       const token = localStorage.getItem('token');
       if (!token) { router.push('/login'); return; }
 
+      let done = 0;
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         if (!['image/jpeg', 'image/png'].includes(file.type)) continue;
@@ -137,6 +145,9 @@ export default function FolderDetailPage() {
           const msg = err.response?.data?.error;
           throw new Error(`Step 3 (start processing): ${typeof msg === 'string' ? msg : err.message}`);
         }
+
+        done++;
+        setUploadProgress({ current: done, total });
       }
 
       input.value = '';
@@ -146,6 +157,42 @@ export default function FolderDetailPage() {
       setError(typeof msg === 'string' ? msg : 'Upload failed');
     } finally {
       setUploading(false);
+      setUploadProgress(null);
+    }
+  };
+
+  const handleDownloadAll = async () => {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+
+    setDownloadingAll(true);
+    try {
+      const res = await axios.get(`/api/vin-folders/${folderId}/download-urls`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const { vinName, items } = res.data as { vinName: string; items: { id: number; filename: string; url: string }[] };
+
+      if (items.length === 0) return;
+
+      const zip = new JSZip();
+      await Promise.all(
+        items.map(async (item) => {
+          const blob = await fetch(item.url).then((r) => r.blob());
+          zip.file(item.filename, blob);
+        })
+      );
+
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(zipBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${vinName}-edited.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      setError(err.response?.data?.error || err.message || 'Download failed');
+    } finally {
+      setDownloadingAll(false);
     }
   };
 
@@ -226,7 +273,13 @@ export default function FolderDetailPage() {
                   file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700
                   hover:file:bg-blue-100"
               />
-              {uploading && <p className="text-sm text-blue-600 mt-2">Uploading...</p>}
+              {uploading && (
+                <p className="text-sm text-blue-600 mt-2">
+                  {uploadProgress
+                    ? `Uploading ${uploadProgress.current} of ${uploadProgress.total}…`
+                    : 'Uploading…'}
+                </p>
+              )}
               {processingCount > 0 && (
                 <p className="text-sm text-amber-600 mt-2">
                   {processingCount} image{processingCount > 1 ? 's' : ''} processing…
@@ -298,7 +351,18 @@ export default function FolderDetailPage() {
         {/* Edited folder */}
         {view === 'edited' && (
           <div>
-            <p className="text-sm text-gray-500 mb-4">{editedImages.length} file{editedImages.length !== 1 ? 's' : ''}</p>
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-sm text-gray-500">{editedImages.length} file{editedImages.length !== 1 ? 's' : ''}</p>
+              {editedImages.length > 1 && (
+                <button
+                  onClick={handleDownloadAll}
+                  disabled={downloadingAll}
+                  className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm font-semibold transition"
+                >
+                  {downloadingAll ? 'Preparing ZIP…' : `Download All (${editedImages.length})`}
+                </button>
+              )}
+            </div>
             {editedImages.length === 0 ? (
               <div className="bg-white rounded-lg shadow p-6 text-center text-gray-500">
                 No edited images yet. Upload images and wait for processing to complete.

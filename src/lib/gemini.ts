@@ -8,9 +8,11 @@ interface GeminiUploadResponse {
 
 interface GeminiGenerateResponse {
   candidates: Array<{
-    content: {
-      parts: Array<{
-        inlineData: { mimeType: string; data: string };
+    finishReason?: string;
+    content?: {
+      parts?: Array<{
+        inlineData?: { mimeType: string; data: string };
+        text?: string;
       }>;
     };
   }>;
@@ -49,7 +51,23 @@ async function generateEditedImage(fileUri: string, mimeType: string): Promise<{
     { timeout: 90000 }
   );
 
-  const inlineData = response.data.candidates[0].content.parts[0].inlineData;
+  const candidate = response.data.candidates?.[0];
+  const finishReason = candidate?.finishReason;
+
+  if (finishReason === 'NO_IMAGE') {
+    throw new Error('Gemini could not generate an image for this input (NO_IMAGE). The image may not contain a recognisable subject.');
+  }
+
+  const parts = candidate?.content?.parts;
+  if (!parts || parts.length === 0) {
+    throw new Error(`Gemini returned no image parts (finishReason: ${finishReason ?? 'unknown'}). Response: ${JSON.stringify(response.data).slice(0, 300)}`);
+  }
+
+  const inlineData = parts[0].inlineData;
+  if (!inlineData) {
+    throw new Error(`Gemini part[0] has no inlineData. Part keys: ${Object.keys(parts[0]).join(', ')}`);
+  }
+
   return { data: inlineData.data, mimeType: inlineData.mimeType };
 }
 
