@@ -4,6 +4,7 @@ import { query } from '@/lib/db';
 import { verifyToken, getTokenFromRequest } from '@/lib/auth';
 import { getStorage, storageKey } from '@/lib/storage';
 import { processImageWithGemini } from '@/lib/gemini';
+import { isListingComplete, buildCaption, buildListingUrl } from '@/lib/social';
 
 // Allow up to 5 minutes — Gemini image generation can take 30-90 seconds per image.
 export const maxDuration = 300;
@@ -98,6 +99,14 @@ async function processAsync(
         "UPDATE images SET status = 'done', edited_path = $1, processed_at = NOW() WHERE id = $2",
         [editedKey, image.id]
       );
+
+      // If the user has the social add-on enabled and listing details are complete,
+      // create a draft social post so they see the "Review & Post" prompt.
+      // Only one draft per folder — skip if one already exists.
+      await maybeCreateDraftPost(image.id, userId).catch((err: Error) =>
+        console.warn('Draft post creation skipped:', err.message)
+      );
+
       return;
     } catch (error) {
       retries++;
@@ -119,4 +128,57 @@ async function processAsync(
       await new Promise((r) => setTimeout(r, Math.pow(2, retries) * 1000));
     }
   }
+}
+
+// Creates a draft social_posts row when all preconditions are met:
+//   1. User has social_media_addon enabled
+//   2. Listing details for the VIN folder are complete (price + condition + year/make/model)
+//   3. No pending draft already exists for this folder
+async function maybeCreateDraftPost(imageId: number, userId: number): Promise<void> {
+  const userResult = await query(
+    `SELECT social_media_addon, caption_template, vin_search_url_template
+     FROM users WHERE id = $1`,
+    [userId]
+  );
+  const user = userResult.rows[0];
+  if (!user?.social_media_addon) return;
+
+  const folderResult = await query(
+    `SELECT vf.id, vf.vin_name, vf.price, vf.condition, vf.description, vf.vin_details
+     FROM images i
+     JOIN vin_folders vf ON i.vin_folder_id = vf.id
+     WHERE i.id = $1`,
+    [imageId]
+  );
+  if (folderResult.rows.length === 0) return;
+  const folder = folderResult.rows[0];
+
+  if (!isListingComplete({
+    price: folder.price ? Number(folder.price) : null,
+    condition: folder.condition,
+    vin_details: folder.vin_details,
+  })) return;
+
+  // One draft per folder — skip if one already exists
+  const existing = await query(
+    `SELECT id FROM social_posts
+     WHERE vin_folder_id = $1 AND platform = 'facebook' AND status = 'draft'`,
+    [folder.id]
+  );
+  if (existing.rows.length > 0) return;
+
+  const caption = buildCaption(user.caption_template, {
+    price: folder.price ? Number(folder.price) : null,
+    condition: folder.condition,
+    description: folder.description,
+    vin_details: folder.vin_details,
+  });
+  const firstComment = buildListingUrl(user.vin_search_url_template, folder.vin_name);
+
+  await query(
+    `INSERT INTO social_posts
+       (vin_folder_id, user_id, platform, hero_image_id, caption, first_comment, status)
+     VALUES ($1, $2, 'facebook', $3, $4, $5, 'draft')`,
+    [folder.id, userId, imageId, caption, firstComment]
+  );
 }
