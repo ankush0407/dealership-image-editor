@@ -643,7 +643,7 @@ export default function FolderDetailPage() {
             <div className="flex items-center justify-between mb-4">
               <p className="text-sm text-gray-500">{editedImages.length} file{editedImages.length !== 1 ? 's' : ''}</p>
               <div className="flex gap-2">
-                {socialStatus?.addon_enabled && socialStatus.fb_connected && listing?.complete && (
+                {socialStatus?.addon_enabled && listing?.complete && (
                   <button
                     onClick={() => openPostBuilder()}
                     className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition"
@@ -838,20 +838,27 @@ export default function FolderDetailPage() {
               </div>
             </div>
 
-            <div className="p-6 border-t border-gray-100 flex justify-end gap-3">
-              <button
-                onClick={() => setShowPostBuilder(false)}
-                className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSubmitPost}
-                disabled={posting || !heroImageId}
-                className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-6 py-2 rounded-lg text-sm font-semibold transition"
-              >
-                {posting ? 'Posting…' : scheduledAt ? 'Schedule Post' : 'Post Now'}
-              </button>
+            <div className="p-6 border-t border-gray-100">
+              {!socialStatus?.fb_connected && (
+                <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
+                  Facebook Page not connected. Go to <a href="/dashboard" className="underline font-medium">Social Settings in Dashboard</a> to connect before posting.
+                </p>
+              )}
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => setShowPostBuilder(false)}
+                  className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSubmitPost}
+                  disabled={posting || !heroImageId || !socialStatus?.fb_connected}
+                  className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-6 py-2 rounded-lg text-sm font-semibold transition"
+                >
+                  {posting ? 'Posting…' : scheduledAt ? 'Schedule Post' : 'Post Now'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
