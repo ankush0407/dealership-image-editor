@@ -25,3 +25,7 @@ export function storageKey(userId: number, vinName: string, type: 'raw' | 'edite
 export function logoKey(userId: number, filename: string): string {
   return `${userId}/logo/${filename}`;
 }
+
+export function socialKey(userId: number, vinName: string, filename: string): string {
+  return `${userId}/${vinName}/social/${filename}`;
+}
