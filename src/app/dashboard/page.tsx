@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import axios from 'axios';
 
 interface User {
@@ -34,7 +34,6 @@ interface SocialStatus {
 
 export default function DashboardPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [user, setUser] = useState<User | null>(null);
   const [folders, setFolders] = useState<VINFolder[]>([]);
   const [newVIN, setNewVIN] = useState('');
@@ -79,7 +78,7 @@ export default function DashboardPage() {
     loadFolders(token);
     loadLogo(token);
     loadSocial(token);
-  }, [router, searchParams]);
+  }, [router]);
 
   const loadFolders = async (token: string) => {
     try {
