@@ -1,59 +1,107 @@
 import axios from 'axios';
 
-// Zernio is API-first — no OAuth client credentials needed.
-// How it works:
-//   1. You have one ZERNIO_API_KEY (server-side, in .env.local)
-//   2. Each user connects their Facebook Page inside Zernio's own dashboard
-//      (app.zernio.com → Add Account → Facebook)
-//   3. Zernio shows them an account_id for that page
-//   4. The user pastes that account_id into Social Settings in this app
-//   5. Our server uses ZERNIO_API_KEY + user's account_id to post
-
 const ZERNIO_API_KEY = process.env.ZERNIO_API_KEY ?? '';
-const ZERNIO_BASE    = 'https://api.zernio.com';
+const BASE = 'https://zernio.com/api/v1';
+
+function headers() {
+  return { Authorization: `Bearer ${ZERNIO_API_KEY}` };
+}
+
+function assertKey() {
+  if (!ZERNIO_API_KEY) throw new Error('ZERNIO_API_KEY is not set in .env.local');
+}
+
+// ─── Profiles ────────────────────────────────────────────────────────────────
+// Each user gets one Zernio profile — a container that groups their social accounts.
+
+export async function createZernioProfile(name: string): Promise<string> {
+  assertKey();
+  const res = await axios.post(
+    `${BASE}/profiles`,
+    { name },
+    { headers: headers(), timeout: 15000 }
+  );
+  // API returns { profile: { _id, ... } } or { _id, ... }
+  return res.data.profile?._id ?? res.data._id;
+}
+
+// ─── Connect (OAuth) ─────────────────────────────────────────────────────────
+// Returns an authUrl the user must open in their browser to connect their FB Page.
+
+export async function getZernioConnectUrl(
+  platform: 'facebook' | 'instagram',
+  profileId: string
+): Promise<string> {
+  assertKey();
+  const res = await axios.get(`${BASE}/connect/${platform}`, {
+    params: { profileId },
+    headers: headers(),
+    timeout: 15000,
+  });
+  return res.data.authUrl;
+}
+
+// ─── Accounts ────────────────────────────────────────────────────────────────
+
+export interface ZernioAccount {
+  _id: string;      // acc_* format — use this when posting
+  platform: string; // 'facebook', 'instagram', etc.
+  name?: string;    // page/account name
+}
+
+export async function listZernioAccounts(profileId?: string): Promise<ZernioAccount[]> {
+  assertKey();
+  const res = await axios.get(`${BASE}/accounts`, {
+    params: profileId ? { profileId } : {},
+    headers: headers(),
+    timeout: 15000,
+  });
+  // API returns array or { accounts: [...] }
+  return Array.isArray(res.data) ? res.data : (res.data.accounts ?? []);
+}
+
+// ─── Posts ───────────────────────────────────────────────────────────────────
 
 export interface ZernioPostOptions {
-  accountId: string;    // user's Zernio account_id for their FB Page
+  accountId: string;    // Zernio account _id of the user's connected FB Page
   imageUrl: string;     // publicly accessible URL Zernio fetches at delivery time
   caption: string;
-  firstComment: string;
-  scheduledAt?: string; // ISO 8601; omit to post immediately
+  firstComment: string; // appended to caption footer (Zernio has no native firstComment API)
+  scheduledAt?: string; // ISO 8601; omit to post immediately (publishNow: true)
 }
 
-export interface ZernioPostResult {
-  zernioPostId: string;
-}
+export async function createZernioPost(opts: ZernioPostOptions): Promise<string> {
+  assertKey();
 
-export async function createZernioPost(opts: ZernioPostOptions): Promise<ZernioPostResult> {
-  if (!ZERNIO_API_KEY) {
-    throw new Error('ZERNIO_API_KEY is not set in .env.local');
-  }
+  // Append listing URL as a footer line in the caption (Zernio has no firstComment API)
+  const content = opts.firstComment
+    ? `${opts.caption}\n\n${opts.firstComment}`
+    : opts.caption;
 
   const payload: Record<string, unknown> = {
-    account_id:    opts.accountId,
-    content:       opts.caption,
-    media:         [{ url: opts.imageUrl }],
-    first_comment: opts.firstComment,
+    platforms:  [{ platform: 'facebook', accountId: opts.accountId }],
+    content,
+    mediaItems: [{ url: opts.imageUrl, type: 'image' }],
   };
-  if (opts.scheduledAt) payload.scheduled_at = opts.scheduledAt;
 
-  const res = await axios.post(`${ZERNIO_BASE}/posts`, payload, {
-    headers: {
-      Authorization: `Bearer ${ZERNIO_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
+  if (opts.scheduledAt) {
+    payload.scheduledFor = opts.scheduledAt;
+    payload.timezone = 'UTC';
+  } else {
+    payload.publishNow = true;
+  }
+
+  const res = await axios.post(`${BASE}/posts`, payload, {
+    headers: { ...headers(), 'Content-Type': 'application/json' },
     timeout: 30000,
   });
-
-  return { zernioPostId: res.data.id ?? res.data.post_id };
+  // Response shape: { post: { _id: "..." } }
+  return res.data.post?._id ?? res.data._id ?? res.data.id;
 }
 
 export async function cancelZernioPost(zernioPostId: string): Promise<void> {
   if (!ZERNIO_API_KEY) return;
   await axios
-    .delete(`${ZERNIO_BASE}/posts/${zernioPostId}`, {
-      headers: { Authorization: `Bearer ${ZERNIO_API_KEY}` },
-      timeout: 15000,
-    })
+    .delete(`${BASE}/posts/${zernioPostId}`, { headers: headers(), timeout: 15000 })
     .catch(() => {});
 }

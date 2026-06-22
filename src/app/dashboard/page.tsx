@@ -58,9 +58,9 @@ export default function DashboardPage() {
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [vinUrlDraft, setVinUrlDraft] = useState('');
   const [captionDraft, setCaptionDraft] = useState('');
-  const [accountIdDraft, setAccountIdDraft] = useState('');
-  const [pageNameDraft, setPageNameDraft] = useState('');
-  const [savingAccount, setSavingAccount] = useState(false);
+  const [connectingFb, setConnectingFb] = useState(false);
+  const [syncingFb, setSyncingFb] = useState(false);
+  const syncIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -223,27 +223,64 @@ export default function DashboardPage() {
     }
   };
 
-  const handleSaveAccount = async () => {
+  const stopSyncPolling = () => {
+    if (syncIntervalRef.current) {
+      clearInterval(syncIntervalRef.current);
+      syncIntervalRef.current = null;
+    }
+  };
+
+  const handleSyncFacebook = async (showMsg = true) => {
+    const token = localStorage.getItem('token');
+    if (!token) return false;
+    setSyncingFb(true);
+    try {
+      const res = await axios.get('/api/social/sync', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.data.connected) {
+        setSocial((prev) =>
+          prev
+            ? { ...prev, fb_connected: true, fb_page_name: res.data.page_name ?? 'Facebook Page' }
+            : prev
+        );
+        setConnectingFb(false);
+        stopSyncPolling();
+        if (showMsg) setSocialMsg('Facebook Page connected successfully!');
+        return true;
+      } else {
+        if (showMsg) setSocialMsg('No Facebook Page detected yet. Complete the connection in the Zernio tab and try again.');
+        return false;
+      }
+    } catch (err: any) {
+      if (showMsg) setSocialMsg(err.response?.data?.error || 'Sync failed.');
+      return false;
+    } finally {
+      setSyncingFb(false);
+    }
+  };
+
+  const handleConnectFacebook = async () => {
     const token = localStorage.getItem('token');
     if (!token) return;
-    setSavingAccount(true);
     setSocialMsg('');
     try {
-      await axios.post(
-        '/api/social/connect',
-        { account_id: accountIdDraft.trim(), page_name: pageNameDraft.trim() || accountIdDraft.trim() },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      setSocial((prev) =>
-        prev ? { ...prev, fb_connected: true, fb_page_name: pageNameDraft.trim() || accountIdDraft.trim() } : prev
-      );
-      setAccountIdDraft('');
-      setPageNameDraft('');
-      setSocialMsg('Facebook Page connected.');
+      const res = await axios.get('/api/social/connect', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const authUrl: string = res.data.authUrl;
+      window.open(authUrl, '_blank', 'noopener,noreferrer');
+      setConnectingFb(true);
+      setSocialMsg('');
+      // Auto-poll every 5s so the UI updates as soon as the user completes OAuth
+      stopSyncPolling();
+      syncIntervalRef.current = setInterval(() => {
+        handleSyncFacebook(false).then((connected) => {
+          if (connected) stopSyncPolling();
+        });
+      }, 5000);
     } catch (err: any) {
-      setSocialMsg(err.response?.data?.error || 'Failed to save account ID');
-    } finally {
-      setSavingAccount(false);
+      setSocialMsg(err.response?.data?.error || 'Failed to get connection URL.');
     }
   };
 
@@ -412,37 +449,38 @@ export default function DashboardPage() {
                     Disconnect
                   </button>
                 </div>
+              ) : connectingFb ? (
+                <div className="space-y-3">
+                  <p className="text-sm text-gray-600">
+                    A Zernio tab has opened. Connect your Facebook Page there, then click below.
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleSyncFacebook(true)}
+                      disabled={syncingFb}
+                      className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm font-semibold transition"
+                    >
+                      {syncingFb ? 'Checking…' : 'I\'ve connected — check now'}
+                    </button>
+                    <button
+                      onClick={() => { setConnectingFb(false); stopSyncPolling(); }}
+                      className="border border-gray-300 text-gray-600 hover:bg-gray-50 px-4 py-2 rounded-lg text-sm transition"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-400">Checking automatically every 5 seconds…</p>
+                </div>
               ) : (
                 <div className="space-y-3">
                   <p className="text-xs text-gray-500">
-                    1. Go to{' '}
-                    <a href="https://app.zernio.com" target="_blank" rel="noreferrer" className="text-blue-600 underline">
-                      app.zernio.com
-                    </a>{' '}
-                    → Add Account → Facebook → connect your Page.
-                    <br />
-                    2. Copy the <strong>Account ID</strong> Zernio shows you and paste it below.
+                    Click below to connect your Facebook Page through Zernio. A new tab will open where you authenticate with Facebook — once done, come back here.
                   </p>
-                  <input
-                    type="text"
-                    value={accountIdDraft}
-                    onChange={(e) => setAccountIdDraft(e.target.value)}
-                    placeholder="Zernio account_id (e.g. acc_abc123)"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 font-mono"
-                  />
-                  <input
-                    type="text"
-                    value={pageNameDraft}
-                    onChange={(e) => setPageNameDraft(e.target.value)}
-                    placeholder="Page name (e.g. Ace Motors — optional)"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
-                  />
                   <button
-                    onClick={handleSaveAccount}
-                    disabled={savingAccount || !accountIdDraft.trim()}
-                    className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm font-semibold transition"
+                    onClick={handleConnectFacebook}
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2"
                   >
-                    {savingAccount ? 'Saving…' : 'Save Account ID'}
+                    Connect Facebook Page
                   </button>
                 </div>
               )}

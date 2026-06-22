@@ -88,23 +88,25 @@ export async function POST(req: NextRequest) {
     });
     const firstComment = buildListingUrl(user.vin_search_url_template, folder.vin_name);
 
-    // ── 8. Log the post record (draft → scheduled/posted) ─────────────────
+    // ── 8. Log the post record ────────────────────────────────────────────
+    const isScheduled = !!scheduled_at;
     const insertResult = await query(
       `INSERT INTO social_posts
          (vin_folder_id, user_id, platform, hero_image_id, caption,
           first_comment, scheduled_at, status)
-       VALUES ($1, $2, 'facebook', $3, $4, $5, $6, 'scheduled')
+       VALUES ($1, $2, 'facebook', $3, $4, $5, $6, $7)
        RETURNING id`,
       [
         vin_folder_id, payload.userId, hero_image_id, caption,
         firstComment, scheduled_at ?? null,
+        isScheduled ? 'scheduled' : 'posted',
       ]
     );
     const postId = insertResult.rows[0].id;
 
     // ── 9. Call Zernio ─────────────────────────────────────────────────────
     try {
-      const zernioResult = await createZernioPost({
+      const zernioPostId = await createZernioPost({
         accountId: user.zernio_fb_account_id,
         imageUrl: signedUrl,
         caption,
@@ -112,8 +114,8 @@ export async function POST(req: NextRequest) {
         scheduledAt: scheduled_at ?? undefined,
       });
       await query(
-        `UPDATE social_posts SET zernio_post_id = $1 WHERE id = $2`,
-        [zernioResult.zernioPostId, postId]
+        `UPDATE social_posts SET zernio_post_id = $1, posted_at = CASE WHEN $2 THEN NULL ELSE NOW() END WHERE id = $3`,
+        [zernioPostId, isScheduled, postId]
       );
     } catch (zernioErr: any) {
       await query(

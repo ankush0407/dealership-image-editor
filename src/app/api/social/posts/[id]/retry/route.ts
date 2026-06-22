@@ -79,18 +79,22 @@ export async function POST(req: NextRequest, { params }: Params) {
     });
     const firstComment = post.first_comment ?? buildListingUrl(post.vin_search_url_template, post.vin_name);
 
-    // Mark as retrying
-    await query(`UPDATE social_posts SET status = 'scheduled', error_message = NULL WHERE id = $1`, [id]);
+    const isScheduled = !!post.scheduled_at;
+    await query(`UPDATE social_posts SET status = $1, error_message = NULL WHERE id = $2`,
+      [isScheduled ? 'scheduled' : 'posted', id]);
 
     try {
-      const result = await createZernioPost({
+      const zernioPostId = await createZernioPost({
         accountId: post.zernio_fb_account_id,
         imageUrl: signedUrl,
         caption,
         firstComment,
         scheduledAt: post.scheduled_at ? new Date(post.scheduled_at).toISOString() : undefined,
       });
-      await query(`UPDATE social_posts SET zernio_post_id = $1 WHERE id = $2`, [result.zernioPostId, id]);
+      await query(
+        `UPDATE social_posts SET zernio_post_id = $1, posted_at = CASE WHEN $2 THEN NULL ELSE NOW() END WHERE id = $3`,
+        [zernioPostId, isScheduled, id]
+      );
     } catch (zernioErr: any) {
       await query(
         `UPDATE social_posts SET status = 'failed', error_message = $1 WHERE id = $2`,
