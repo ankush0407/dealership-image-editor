@@ -1,8 +1,8 @@
 # Social Media Posting — Feature Planning
 
 Branch: `feature/social-media-posting`  
-Status: Pre-development planning — all decisions resolved ✓  
-Last updated: 2026-06-17
+Status: ✅ MERGED to `main` — 2026-06-23  
+Last updated: 2026-06-23
 
 ---
 

@@ -71,11 +71,32 @@ dealership-image-editor/
 - [x] 2-step Gemini API integration:
   - Step 1: Upload to Gemini File API
   - Step 2: Generate edited image via generateContent
-- [x] Background color: #424242 (dark grey)
+- [x] Background: premium studio aesthetic — gradient grey backdrop (#787878 → #363636 vignette) + polished reflective white floor (~#F0F0F0). Motorcycle preserved pixel-perfect; only background replaced.
 - [x] Output resolution: 2K
 - [x] Response parsing extracts base64 without OOM
 - [x] 90-second timeout per image
 - [x] Edited images stored at `/storage/{userId}/{VIN}/edited/edited_{filename}`
+
+### ✅ Social Media Posting
+- [x] Zernio integration for Facebook Page posting
+- [x] Add-on gating via `users.social_media_addon` flag
+- [x] Zernio OAuth connect/disconnect flow
+- [x] Per-user caption template with placeholders (`{year}`, `{make}`, `{model}`, etc.)
+- [x] VIN decode via NHTSA API (cached in `vin_folders.vin_details`)
+- [x] Listing details per VIN folder (price, condition, description)
+- [x] Hero image selection + caption editor + schedule picker (Post Builder)
+- [x] Server-side image resize with `sharp` before posting
+- [x] First comment auto-constructed from per-user VIN URL template
+- [x] Scheduled and immediate posting via Zernio `scheduled_at`
+- [x] Zernio webhook handler for delivery confirmation
+- [x] Post history per VIN folder (status, timestamps, retry)
+- [x] Retry endpoint for failed posts
+- [x] Standalone path: upload pre-edited images directly (no Gemini required)
+
+### ✅ Logo Overlay
+- [x] Dealership logo upload per user
+- [x] Logo composited onto edited images (top-left, 15% width) via `sharp`
+- [x] Apply logo to all previously processed images retroactively
 
 ### ✅ Download
 - [x] Per-image download for edited images
@@ -124,8 +145,8 @@ dealership-image-editor/
 This exact structure mirrors future S3 keys, enabling one-line config migration.
 
 ### Gemini Integration
-- Uses `gemini-3.1-flash-image` model (not Nano Banana)
-- Prompt optimized for vehicle background replacement
+- Uses `gemini-3.1-flash-image` model
+- Prompt instructs background-only replacement: motorcycle kept pixel-perfect, background replaced with gradient grey studio backdrop and polished reflective white floor
 - Temperature: 0.2 (deterministic)
 - Output: 2K (balances quality vs. payload)
 - Retry strategy: 3 attempts with 2s → 4s → 8s backoff
@@ -148,11 +169,29 @@ NEXT_PUBLIC_API_URL            # Frontend API endpoint
 |--------|----------|------|---------|
 | POST | `/api/auth/signup` | None | Register dealer + allocate credits |
 | POST | `/api/auth/login` | None | Authenticate & get JWT token |
+| GET | `/api/auth/me` | JWT | Get current user info |
 | POST | `/api/vin-folders/create` | JWT | Create new VIN folder |
 | GET | `/api/vin-folders/list` | JWT | List user's folders |
 | GET | `/api/vin-folders/[id]/images` | JWT | List images in folder |
+| GET | `/api/vin-folders/[id]/vin-decode` | JWT | NHTSA VIN decode (cached) |
+| PUT | `/api/vin-folders/[id]/listing` | JWT | Save listing details |
+| GET | `/api/vin-folders/[id]/social-posts` | JWT | List social posts for folder |
+| GET | `/api/vin-folders/[id]/download-urls` | JWT | Signed download URLs for folder |
 | POST | `/api/images/upload` | JWT | Upload images → trigger processing |
+| POST | `/api/images/process` | JWT | Reprocess a single image |
 | GET | `/api/images/[id]/download` | JWT | Download edited image |
+| GET | `/api/images/[id]/preview-url` | JWT | Signed preview URL |
+| POST | `/api/images/upload-url` | JWT | Get signed upload URL (Supabase) |
+| POST | `/api/user/logo` | JWT | Upload dealership logo |
+| POST | `/api/user/logo/apply-existing` | JWT | Re-apply logo to all images |
+| GET | `/api/social/status` | JWT | Addon + Facebook connection status |
+| GET | `/api/social/connect` | JWT | Redirect to Zernio OAuth |
+| DELETE | `/api/social/disconnect` | JWT | Remove Facebook connection |
+| PUT | `/api/social/caption-template` | JWT | Save caption template |
+| POST | `/api/social/post` | JWT | Resize + post via Zernio |
+| POST | `/api/social/posts/[id]/retry` | JWT | Retry failed post |
+| GET | `/api/social/sync` | JWT | Sync status from Zernio |
+| POST | `/api/social/webhook` | Zernio | Delivery confirmation webhook |
 | GET | `/api/operator/dashboard` | Operator | View all users & platform stats |
 
 ## Next Steps to Complete v1
@@ -184,10 +223,10 @@ NEXT_PUBLIC_API_URL            # Frontend API endpoint
 
 - No payment integration (manual credit assignment)
 - No email notifications (dealers refresh UI)
-- No social media posting (out of scope)
+- Instagram posting deferred to Phase 2 (Facebook Pages live)
 - Single-user per dealership account
-- Local storage only (S3 in v2)
-- No retry button for failed images (v1)
+- Supabase storage (S3-compatible; local fallback available)
+- Fully automated posting deferred to Phase 2 (semi-auto draft flow live)
 
 ## Architecture Strengths
 
@@ -200,5 +239,5 @@ NEXT_PUBLIC_API_URL            # Frontend API endpoint
 
 ---
 
-**Status**: Project scaffolded and ready for deployment. All P0 requirements implemented.
-**Ready to**: Install dependencies, test locally, onboard pilot dealers.
+**Status**: Production-ready. v1 shipped with social media posting and premium studio background.
+**Ready to**: Onboard pilot dealers and collect feedback for v2.

@@ -22,10 +22,20 @@ A **complete, production-ready SaaS web application** for dealership image backg
 - 3-tier credit system (Free/Standard/Pro)
 - VIN folder organization
 - Batch image upload with real-time status
-- Automatic background replacement (dark grey #424242)
+- Automatic background replacement — premium studio aesthetic (gradient grey + reflective white floor); motorcycle kept pixel-perfect
+- Dealership logo overlay on every edited image
 - Download individual or batched images
 - Operator admin dashboard
 - Complete audit trail
+
+### ✅ Social Media Posting (v1)
+- Facebook Page posting via Zernio API
+- VIN decode (NHTSA) with editable fallback
+- Listing details per VIN folder (price, condition, description)
+- Auto-filled captions with user-editable templates
+- Hero image selection, caption editor, schedule picker
+- Post history per folder with retry support
+- Standalone path: upload pre-edited images without Gemini processing
 
 ### ✅ Production Quality
 - TypeScript for type safety
@@ -176,7 +186,7 @@ NEXT_PUBLIC_API_URL         # Your deployed domain
 
 ### 2. Image Processing
 - 2-step Gemini API integration
-- Dark grey background (#424242)
+- Premium studio background: gradient grey (#787878 → #363636) + polished reflective white floor (~#F0F0F0). Only background changes — motorcycle untouched.
 - 2K resolution output
 - 3 automatic retries on failure
 - 90-second timeout per image
@@ -236,13 +246,13 @@ NEXT_PUBLIC_API_URL         # Your deployed domain
 ## What's NOT Included (v2 Features)
 
 - Stripe payment integration
-- S3 storage (ready for migration)
+- Instagram posting (Facebook Pages live; Instagram is Phase 2)
 - Email notifications
 - Multi-user per dealership
-- Social media posting
-- NHTSA VIN decoding
+- Fully automated posting (semi-auto draft flow is live)
+- Facebook Groups posting (Phase 3)
 
-These are documented in the PRD as P1/P2 and designed for post-pilot implementation.
+These are designed for post-pilot implementation.
 
 ---
 

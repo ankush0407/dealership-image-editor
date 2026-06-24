@@ -47,7 +47,7 @@ credit_transactions-- Audit trail of all credit changes
 ### Gemini Integration
 - 2-step API: File upload → generateContent
 - Model: `gemini-3.1-flash-image`
-- Output: 2K resolution, dark grey #424242 background
+- Output: 2K resolution, premium studio background (gradient grey + polished reflective white floor); motorcycle preserved pixel-perfect
 - Resilience: 3 retries, 90s timeout, no credit charge on failure
 
 ---
@@ -254,9 +254,9 @@ dealership-image-editor/
 |-----------|------------|-----------|
 | No payment | Manual credit assignment | Stripe integration |
 | Email notifications | Dealers refresh UI | SendGrid + queue |
-| Social media posting | Out of scope | Facebook/Instagram API |
+| Instagram posting | Facebook Pages live; Instagram deferred | Zernio IG account Phase 2 |
 | Multi-user accounts | Single login per dealer | Team management |
-| Storage scalability | Local disk | S3 + CloudFront |
+| Fully automated posting | Semi-auto draft flow | Per-user auto-post toggle |
 | Rate limiting | None | Implement per-user limits |
 
 ---

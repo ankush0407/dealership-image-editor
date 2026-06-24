@@ -90,17 +90,40 @@
   - Check user credit balance
   - Create image records
   - Deduct 1 credit per image
-  - Save raw images to `/storage/{userId}/{vin}/raw/`
   - Trigger async Gemini processing
   - Implement retry logic (3x with backoff)
   - Auto-refund credits on permanent failure
+  - Composite dealership logo after Gemini processing
+
+- **process/route.ts** - Reprocess a single image through Gemini
+
+- **upload-url/route.ts** - Generate signed Supabase upload URL for direct client upload
 
 - **[id]/download/route.ts** - Download edited image
   - Verify user owns image
-  - Check image status is "done"
-  - Read from edited_path
-  - Return with proper MIME type
-  - Set attachment headers for browser download
+  - Return with proper MIME type and attachment headers
+
+- **[id]/preview-url/route.ts** - Return signed URL for in-browser preview
+
+#### VIN & Listing (`/api/vin-folders/[id]/`)
+- **vin-decode/route.ts** - NHTSA VIN API lookup; result cached in `vin_folders.vin_details`
+- **listing/route.ts** - Save price, condition, description for a VIN folder
+- **social-posts/route.ts** - List all social posts associated with a VIN folder
+- **download-urls/route.ts** - Return signed download URLs for all edited images in folder
+
+#### Social Media (`/api/social/`)
+- **status/route.ts** - Return addon flag + Facebook/Instagram connection state
+- **connect/route.ts** - Redirect user to Zernio OAuth for Facebook Page connection
+- **disconnect/route.ts** - Remove stored Zernio account IDs from user record
+- **caption-template/route.ts** - Save per-user default caption template
+- **post/route.ts** - Core posting endpoint: resize hero image → call Zernio → log to `social_posts`
+- **posts/[id]/retry/route.ts** - Re-fire a failed post
+- **sync/route.ts** - Poll Zernio for updated post statuses and sync to DB
+- **webhook/route.ts** - Receive and verify Zernio delivery webhooks; update `social_posts.status`
+
+#### User Settings (`/api/user/`)
+- **logo/route.ts** - Upload dealership logo (stored in Supabase)
+- **logo/apply-existing/route.ts** - Re-composite logo onto all previously processed images
 
 #### Admin (`/api/operator/`)
 - **dashboard/route.ts** - Operator admin dashboard
@@ -130,12 +153,22 @@
   - Payload type with userId and email
 
 - **gemini.ts** - Google Gemini API integration
-  - uploadToGeminiFileAPI(filePath) - Step 1: Upload to File API
-  - generateEditedImage(fileUri, mimeType) - Step 2: Generate edited image
-  - processImageWithGemini(inputPath, outputPath) - Full 2-step process
-  - ensureStorageDir(userId, vin) - Create directory structure
-  - getStoragePath(userId, vin, type, filename) - Path formatting
-  - Error handling and retry logic
+  - uploadToGeminiFileAPI(buffer, mimeType) - Step 1: Upload to File API
+  - generateEditedImage(fileUri, mimeType) - Step 2: Generate edited image with premium studio background
+  - processImageWithGemini(inputBuffer, mimeType) - Full 2-step process; returns edited Buffer
+  - Prompt: background-only replacement — gradient grey backdrop + polished reflective white floor; motorcycle kept pixel-perfect
+
+- **social.ts** - Social media caption and post helpers
+  - Caption template rendering with VIN placeholder substitution
+  - Listing URL construction from per-user VIN URL template
+
+- **zernio.ts** - Zernio API client for social media posting
+  - createPost(accountId, payload) - Submit post to Zernio
+  - getPostStatus(zernioPostId) - Poll post delivery status
+
+- **storage/index.ts** - Storage abstraction layer (routes to Supabase or local)
+- **storage/supabase.ts** - Supabase storage driver (upload, download, signed URLs)
+- **storage/s3.ts** - S3 storage driver (future migration path)
 
 ---
 
@@ -153,44 +186,63 @@ dealership-image-editor/
 │   │   ├── signup/
 │   │   │   └── page.tsx            (Signup page)
 │   │   ├── dashboard/
-│   │   │   └── page.tsx            (Main dashboard)
+│   │   │   └── page.tsx            (Main dashboard + social settings)
 │   │   ├── folder/
 │   │   │   └── [id]/
-│   │   │       └── page.tsx        (Image gallery)
+│   │   │       └── page.tsx        (Image gallery + post builder)
 │   │   └── api/
 │   │       ├── auth/
-│   │       │   ├── signup/
-│   │       │   │   └── route.ts
-│   │       │   └── login/
-│   │       │       └── route.ts
+│   │       │   ├── signup/route.ts
+│   │       │   ├── login/route.ts
+│   │       │   └── me/route.ts
 │   │       ├── vin-folders/
-│   │       │   ├── create/
-│   │       │   │   └── route.ts
-│   │       │   ├── list/
-│   │       │   │   └── route.ts
+│   │       │   ├── create/route.ts
+│   │       │   ├── list/route.ts
 │   │       │   └── [id]/
-│   │       │       └── images/
-│   │       │           └── route.ts
+│   │       │       ├── images/route.ts
+│   │       │       ├── vin-decode/route.ts
+│   │       │       ├── listing/route.ts
+│   │       │       ├── social-posts/route.ts
+│   │       │       └── download-urls/route.ts
 │   │       ├── images/
-│   │       │   ├── upload/
-│   │       │   │   └── route.ts
+│   │       │   ├── upload/route.ts
+│   │       │   ├── process/route.ts
+│   │       │   ├── upload-url/route.ts
 │   │       │   └── [id]/
-│   │       │       └── download/
-│   │       │           └── route.ts
+│   │       │       ├── download/route.ts
+│   │       │       └── preview-url/route.ts
+│   │       ├── user/
+│   │       │   └── logo/
+│   │       │       ├── route.ts
+│   │       │       └── apply-existing/route.ts
+│   │       ├── social/
+│   │       │   ├── status/route.ts
+│   │       │   ├── connect/route.ts
+│   │       │   ├── disconnect/route.ts
+│   │       │   ├── caption-template/route.ts
+│   │       │   ├── post/route.ts
+│   │       │   ├── sync/route.ts
+│   │       │   ├── webhook/route.ts
+│   │       │   └── posts/[id]/retry/route.ts
 │   │       └── operator/
-│   │           └── dashboard/
-│   │               └── route.ts
+│   │           └── dashboard/route.ts
 │   └── lib/
 │       ├── db.ts                   (Database utilities)
 │       ├── auth.ts                 (JWT & crypto)
-│       └── gemini.ts               (Gemini API client)
+│       ├── gemini.ts               (Gemini API client)
+│       ├── social.ts               (Caption helpers)
+│       ├── zernio.ts               (Zernio API client)
+│       └── storage/
+│           ├── index.ts            (Storage abstraction)
+│           ├── supabase.ts         (Supabase driver)
+│           └── s3.ts               (S3 driver — future)
 ├── db/
-│   └── schema.sql                  (PostgreSQL schema)
+│   ├── schema.sql                  (PostgreSQL schema)
+│   └── migrations/                 (Incremental migrations)
 ├── .env.local                      (Environment template)
 ├── .gitignore                      (Git ignore)
 ├── package.json                    (Dependencies)
 ├── tsconfig.json                   (TypeScript config)
-├── tsconfig.node.json              (Next.js TS config)
 ├── next.config.ts                  (Next.js config)
 ├── tailwind.config.ts              (Tailwind config)
 ├── postcss.config.js               (PostCSS config)

@@ -8,10 +8,11 @@ A SaaS web application that automates vehicle photo background editing for car d
 - **Credit System**: 3 pricing tiers (Free/25 credits, Standard/250 credits, Pro/500 credits)
 - **VIN Organization**: Create folders organized by vehicle VIN numbers
 - **Batch Upload**: Upload multiple raw photos at once
-- **AI Background Editing**: Automatic background replacement to dark grey (#424242) using Google Gemini 3.1 Flash
+- **AI Background Editing**: Automatic background replacement to a premium studio aesthetic (gradient grey backdrop + polished reflective white floor) using Google Gemini 3.1 Flash. The motorcycle is kept pixel-perfect; only the background changes.
 - **Image Download**: Download individual edited images or batch as ZIP
 - **Credit Tracking**: Real-time credit balance and usage history
 - **Status Monitoring**: Track image processing status (Queued → Processing → Done/Failed)
+- **Social Media Posting**: Post edited hero images to Facebook Pages via Zernio, with auto-filled captions from VIN data, scheduling support, and listing URL as first comment
 
 ## Tech Stack
 
@@ -20,7 +21,8 @@ A SaaS web application that automates vehicle photo background editing for car d
 - **Database**: PostgreSQL
 - **Auth**: JWT with bcrypt password hashing
 - **Image Processing**: Google Gemini 3.1 Flash API
-- **Storage**: Local disk (structured for S3 migration)
+- **Storage**: Supabase (S3-compatible, with local disk fallback)
+- **Social Posting**: Zernio API (Facebook Pages; Instagram Phase 2)
 
 ## Prerequisites
 
@@ -96,8 +98,31 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ### Images
 - `POST /api/images/upload` - Upload raw images (triggers processing)
+- `POST /api/images/process` - Reprocess a single image
 - `GET /api/images/[id]/download` - Download edited image
+- `GET /api/images/[id]/preview-url` - Get signed preview URL
+- `GET /api/vin-folders/[id]/download-urls` - Get signed download URLs for folder
 - `GET /api/vin-folders/[id]/zip` - Download folder as ZIP
+
+### VIN & Listing
+- `GET /api/vin-folders/[id]/vin-decode` - NHTSA VIN decode (cached in DB)
+- `PUT /api/vin-folders/[id]/listing` - Save price, condition, description
+
+### Social Media
+- `GET /api/social/status` - Check addon status + Facebook connection
+- `GET /api/social/connect` - Redirect to Zernio OAuth for Facebook
+- `DELETE /api/social/disconnect` - Remove Facebook connection
+- `PUT /api/social/caption-template` - Save user's default caption template
+- `POST /api/social/post` - Resize hero image → post via Zernio
+- `POST /api/social/posts/[id]/retry` - Retry a failed post
+- `GET /api/social/sync` - Sync post status from Zernio
+- `POST /api/social/webhook` - Receive Zernio delivery webhooks
+- `GET /api/vin-folders/[id]/social-posts` - List posts for a VIN folder
+
+### User Settings
+- `GET /api/auth/me` - Get current user info
+- `POST /api/user/logo` - Upload dealership logo
+- `POST /api/user/logo/apply-existing` - Re-apply logo to all processed images
 
 ### Operator (Admin)
 - `GET /api/operator/dashboard` - View all accounts and usage
@@ -139,7 +164,7 @@ POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-im
 
 ### Processing Parameters
 - **Model**: `gemini-3.1-flash-image`
-- **Background**: Dark grey (#424242)
+- **Background**: Premium studio aesthetic — gradient grey backdrop (#787878 → #363636 vignette) with polished reflective white floor (~#F0F0F0). Motorcycle kept pixel-perfect; only background changes.
 - **Output Resolution**: 2K
 - **Temperature**: 0.2 (low variance)
 - **Retries**: 3 with exponential backoff
@@ -147,7 +172,7 @@ POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-im
 
 ### Success Criteria
 - Processing completes in under 60 seconds
-- Background matches #424242 exactly
+- Background matches premium studio reference
 - Image quality: 2K resolution
 - Error rate: < 5%
 
@@ -202,22 +227,28 @@ To migrate to S3, swap storage driver with minimal code changes.
 
 ## Development Roadmap
 
-### v1 (Current Pilot - Week 1-3)
+### v1 (Current - Shipped)
 - ✅ Auth with credit system
 - ✅ VIN folder management
 - ✅ Batch upload and Gemini processing
 - ✅ Download single and ZIP
 - ✅ Dashboard with status tracking
-- [ ] Operator admin view
-- [ ] Real-time status polling (nice-to-have)
+- ✅ Operator admin view
+- ✅ Dealership logo overlay on edited images
+- ✅ Premium studio background (gradient grey + reflective white floor)
+- ✅ Social media posting to Facebook Pages via Zernio
+- ✅ VIN decode via NHTSA with editable fallback
+- ✅ Listing details (price, condition, description) per VIN folder
+- ✅ Auto-filled captions with user-editable templates
+- ✅ Scheduled posting and post history per folder
 
 ### v2 (Post-Pilot)
 - Stripe integration for self-serve credit purchases
-- S3 storage migration
+- Instagram posting (Zernio Phase 2)
 - Multi-user accounts per dealership
 - Email notifications on job completion
-- Facebook/Instagram posting integration
-- NHTSA VIN decoding and metadata enrichment
+- Fully automated posting (skip review step)
+- NHTSA VIN decoding improvements for imported/specialty brands
 
 ## Troubleshooting
 
