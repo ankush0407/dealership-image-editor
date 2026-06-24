@@ -28,7 +28,17 @@ async function uploadToGeminiFileAPI(buffer: Buffer, mimeType: string): Promise<
 }
 
 async function generateEditedImage(fileUri: string, mimeType: string): Promise<{ data: string; mimeType: string }> {
-  const prompt = `Replace only the background of this motorcycle image. Keep the motorcycle pixel-perfect and unaltered — do not change its color, bodywork, decals, condition, or any detail. Only the background and floor should change. Place the motorcycle onto a professional powersports photography studio background: a smooth photographic gradient grey backdrop — medium grey (approximately #787878) directly behind the subject, naturally vignetting to a deeper charcoal (#363636) at the outer edges and corners. The floor should be a pristine, highly polished white-to-light-grey surface (approximately #F0F0F0) with a clean, soft specular reflection of the motorcycle visible on the floor surface beneath the tires. Add gentle, grounded shadows beneath the tires and kickstand to anchor the bike to the polished floor. The final result should match the aesthetic of a premium powersports dealership studio photoshoot.`;
+  const prompt = `Replace only the background of this motorcycle image. Keep the motorcycle pixel-perfect and unaltered — do not change its color, bodywork, decals, condition, or any detail. Only the background and floor should change.
+
+Place the motorcycle in a professional powersports photography studio with these exact, non-negotiable background elements:
+
+FLOOR: A pristine, highly polished white-to-light-grey surface (approximately #F0F0F0). The floor occupies the bottom 25–30% of the image. It has a clean, soft specular reflection of the motorcycle directly beneath the tires.
+
+WALL/BACKDROP: A smooth gradient grey wall — medium grey (approximately #787878) at the center behind the subject, darkening to charcoal (#363636) at the outer edges and top corners.
+
+FLOOR-TO-WALL TRANSITION: There must be a sharp, clearly visible, straight horizontal seam where the polished floor meets the vertical backdrop wall — exactly like a professional photography studio with a hard baseboard line. This transition must NOT be blurry, gradual, or faded. It must be a crisp, distinct line at the same height across the full width of the image, consistently placed at approximately 25–30% from the bottom edge.
+
+Add gentle, grounded shadows beneath the tires and kickstand to anchor the motorcycle to the polished floor. The final result must match the aesthetic of a premium powersports dealership studio photoshoot, with identical background treatment regardless of the camera angle.`;
 
   const response = await axios.post<GeminiGenerateResponse>(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image:generateContent?key=${GEMINI_API_KEY}`,
@@ -43,7 +53,7 @@ async function generateEditedImage(fileUri: string, mimeType: string): Promise<{
         },
       ],
       generationConfig: {
-        temperature: 0.2,
+        temperature: 0,
         responseModalities: ['IMAGE'],
         imageConfig: { imageSize: '2K' },
       },
